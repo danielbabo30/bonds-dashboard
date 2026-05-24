@@ -617,7 +617,9 @@ export default function ScreenerPage() {
 
                       {/* Indexing */}
                       <td className="px-4 py-3">
-                        {isFetching && cpi === null
+                        {usingMockData
+                          ? <span className="text-slate-300 text-xs">—</span>
+                          : isFetching && cpi === null
                           ? <Skel />
                           : cpi === null
                           ? <span className="text-slate-300 text-xs">—</span>
@@ -637,22 +639,22 @@ export default function ScreenerPage() {
 
                       {/* Price */}
                       <td className="px-4 py-3 text-left font-mono text-slate-800">
-                        {isFetching && price === null ? <Skel /> : price !== null ? formatPrice(price) : '—'}
+                        {usingMockData ? '—' : isFetching && price === null ? <Skel /> : price !== null ? formatPrice(price) : '—'}
                       </td>
 
                       {/* YTM */}
-                      <td className={`px-4 py-3 text-left font-mono font-semibold ${anomaly ? 'text-red-700' : ytm !== null && ytm > 4 ? 'text-orange-600' : 'text-slate-700'}`}>
-                        {isFetching && ytm === null ? <Skel /> : ytm !== null ? formatYTM(ytm) : '—'}
+                      <td className="px-4 py-3 text-left font-mono font-semibold text-slate-700">
+                        {usingMockData ? '—' : isFetching && ytm === null ? <Skel /> : ytm !== null ? formatYTM(ytm) : '—'}
                       </td>
 
                       {/* Duration */}
                       <td className="px-4 py-3 text-left font-mono text-slate-700">
-                        {isFetching && dur === null ? <Skel /> : dur !== null ? formatDuration(dur) : '—'}
+                        {usingMockData ? '—' : isFetching && dur === null ? <Skel /> : dur !== null ? formatDuration(dur) : '—'}
                       </td>
 
                       {/* Maturity */}
                       <td className="px-4 py-3 text-left text-slate-600">
-                        {isFetching && mat === null ? <Skel /> : mat ?? '—'}
+                        {usingMockData ? '—' : isFetching && mat === null ? <Skel /> : mat ?? '—'}
                       </td>
                     </tr>
                   )

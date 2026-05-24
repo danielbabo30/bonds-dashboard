@@ -7,8 +7,9 @@ import {
 } from 'recharts'
 import { fetchSecurityData, fetchEodHistory } from '../api/tase'
 import type { TaseSecurityData, TaseEodRecord } from '../api/tase'
-import type { DailyMarketData, CashFlow } from '../types/bond'
+import type { DailyMarketData, CashFlow, Bond } from '../types/bond'
 import { formatPrice, formatYTM, formatDuration, calcParity, formatChartDate } from '../utils/formatters'
+import { getBondById } from '../data/mockData'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,29 @@ function genCashFlows(couponPct: number, matDate: string): CashFlow[] {
       status: 'forecast' as const,
     }
   })
+}
+
+// ── Mock fallback ─────────────────────────────────────────────────────────────
+
+/** Convert a mock Bond to TaseSecurityData so the page can render it */
+function bondToSecData(b: Bond): TaseSecurityData {
+  return {
+    Name:                 b.name,
+    Type:                 b.issuerType === 'government' ? ' Government Bonds' : ' Corporate Bonds',
+    SecuritySubType:      b.couponSchedule,
+    LastRate:             b.lastPriceAgorot / 100,
+    AnnualYield:          b.ytm,
+    BrutoYield:           b.ytm,
+    AnnualInterest:       b.couponRate.toFixed(5),
+    Linkage:              b.indexingType === 'cpi' ? 'CPI' : '',
+    RedemptionDate:       b.maturityDate,
+    DaysUntilRedemption:  Math.round(b.duration * 365),
+    RegisteredCapital:    0,
+    MarketValue:          0,
+    ISIN:                 '',
+    Symbol:               b.securityId,
+    TradeDate:            '',
+  }
 }
 
 // ── Return calculations ───────────────────────────────────────────────────────
@@ -363,6 +387,7 @@ export default function BondDetailPage() {
 
   const [secData, setSecData]   = useState<TaseSecurityData | null>(null)
   const [history, setHistory]   = useState<TaseEodRecord[]>([])
+  const [mockBond, setMockBond] = useState<Bond | null>(null)
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
 
@@ -370,6 +395,7 @@ export default function BondDetailPage() {
     if (!securityId) return
     setLoading(true)
     setError(null)
+    setMockBond(null)
 
     Promise.all([
       fetchSecurityData(securityId),
@@ -379,7 +405,17 @@ export default function BondDetailPage() {
         setSecData(data)
         setHistory(hist)
       })
-      .catch((e: Error) => setError(e.message))
+      .catch(() => {
+        // API failed or bond ID doesn't exist (404) — try mock data
+        const mock = getBondById(securityId)
+        if (mock) {
+          setSecData(bondToSecData(mock))
+          setMockBond(mock)
+          setError(null)
+        } else {
+          setError('הנייר לא נמצא בבורסה ולא בנתוני הדמה')
+        }
+      })
       .finally(() => setLoading(false))
   }, [securityId])
 
@@ -416,8 +452,9 @@ export default function BondDetailPage() {
   const priceAgorot = Math.round(secData.LastRate * 100)
   const isGovt      = secData.Type?.toLowerCase().includes('government')
   const isHighYield = !isGovt && (secData.AnnualYield ?? 0) > 5.5
-  const dailyData   = mapHistory(history, secData.AnnualYield ?? 0)
-  const cashFlows   = secData.RedemptionDate ? genCashFlows(couponRate, secData.RedemptionDate) : []
+  // When using mock bond, use its pre-generated dailyData & cashFlows directly
+  const dailyData   = mockBond ? mockBond.dailyData : mapHistory(history, secData.AnnualYield ?? 0)
+  const cashFlows   = mockBond ? mockBond.cashFlows : (secData.RedemptionDate ? genCashFlows(couponRate, secData.RedemptionDate) : [])
 
   return (
     <div className="min-h-screen bg-slate-50" dir="rtl">
