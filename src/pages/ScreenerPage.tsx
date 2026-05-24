@@ -47,12 +47,9 @@ function mockToSecurityData(b: (typeof mockBonds)[0]): TaseSecurityData {
 
 /** SubTypeDesc from TASE may arrive in English (lang=1) or Hebrew (lang=0) */
 function isGovtSubType(subTypeDesc: string): boolean {
-  return (
-    subTypeDesc === 'Government Bonds' ||
-    subTypeDesc === 'אגרות חוב ממשלתיות' ||
-    subTypeDesc === 'אג"ח ממשלתי' ||
-    subTypeDesc === 'אגח ממשלתי'
-  )
+  if (!subTypeDesc) return false
+  if (subTypeDesc === 'Government Bonds') return true
+  return subTypeDesc.includes('ממשלתי')
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────

@@ -50,20 +50,15 @@ export interface TaseEodRecord {
 
 const HDR: HeadersInit = { 'Content-Type': 'application/json' }
 
-// SubTypeDesc values from TASE — included in both English (lang=1) and Hebrew (lang=0)
-const BOND_SUBTYPES = new Set([
-  // English (lang=1)
-  'Corporate Bonds',
-  'Government Bonds',
-  'Corporate Bonds TASE UP',
-  // Hebrew (lang=0)
-  'אגרות חוב קונצרניות',
-  'אגרות חוב ממשלתיות',
-  'אג"ח קונצרני',
-  'אג"ח ממשלתי',
-  'אגח קונצרני',
-  'אגח ממשלתי',
-])
+// SubTypeDesc values from TASE (English exact match, Hebrew partial match)
+const BOND_SUBTYPES_EN = new Set(['Corporate Bonds', 'Government Bonds', 'Corporate Bonds TASE UP'])
+
+function isBondSubType(subTypeDesc: string): boolean {
+  if (!subTypeDesc) return false
+  if (BOND_SUBTYPES_EN.has(subTypeDesc)) return true
+  // Hebrew: any SubTypeDesc containing "אגרות חוב" or "אגח" is a bond type
+  return subTypeDesc.includes('אגרות חוב') || subTypeDesc.includes('אגח') || subTypeDesc.includes('אג"ח')
+}
 
 // ── Timeout helper ────────────────────────────────────────────────────────────
 
@@ -88,7 +83,7 @@ export async function fetchBondEntities(): Promise<TaseEntity[]> {
   const res = await fetchWithTimeout('/api/tase/content/searchentities?lang=0', { headers: HDR })
   if (!res.ok) throw new Error(`רשימת ניירות: שגיאת שרת ${res.status}`)
   const all: TaseEntity[] = await res.json()
-  return all.filter((e) => BOND_SUBTYPES.has(e.SubTypeDesc))
+  return all.filter((e) => isBondSubType(e.SubTypeDesc))
 }
 
 /** Fetch current price, YTM, and meta for a single bond. */
