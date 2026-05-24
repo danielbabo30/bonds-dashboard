@@ -1,53 +1,57 @@
 /**
  * Vercel Serverless Function — TASE API proxy
- *
- * Handles all requests to /api/tase/* and forwards them to
- * https://api.tase.co.il/api/* adding the required Referer header.
- *
- * Replaces the Vite dev-server proxy (which only works during `npm run dev`).
+ * Routes: /api/tase/* → https://api.tase.co.il/api/*
+ * Adds required Referer header to bypass TASE CORS restriction.
  */
 
+export const config = { api: { bodyParser: true } }
+
 export default async function handler(req, res) {
-  // Build target path from catch-all segments
-  const segments = Array.isArray(req.query.path)
-    ? req.query.path
-    : req.query.path
-    ? [req.query.path]
-    : []
-
-  // Forward all query params except the internal 'path' catch-all
-  const qs = new URLSearchParams()
-  for (const [key, val] of Object.entries(req.query)) {
-    if (key !== 'path') qs.append(key, String(val))
-  }
-
-  const qString   = qs.toString()
-  const targetUrl = `https://api.tase.co.il/api/${segments.join('/')}${qString ? `?${qString}` : ''}`
-
-  /** @type {RequestInit} */
-  const fetchOptions = {
-    method:  req.method ?? 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Referer':       'https://www.tase.co.il/',
-      'Cache-Control': 'no-cache',
-    },
-  }
-
-  if (req.method === 'POST' && req.body) {
-    fetchOptions.body = typeof req.body === 'string'
-      ? req.body
-      : JSON.stringify(req.body)
-  }
-
   try {
-    const upstream = await fetch(targetUrl, fetchOptions)
-    const data     = await upstream.json()
+    // Build target path from catch-all segments
+    const raw      = req.query.path          // array or string
+    const segments = Array.isArray(raw) ? raw : raw ? [raw] : []
 
-    // Pass CORS headers so the browser doesn't block the response
+    // Forward all query params except the internal 'path' catch-all key
+    const qs = new URLSearchParams()
+    for (const [key, val] of Object.entries(req.query)) {
+      if (key === 'path') continue
+      if (Array.isArray(val)) val.forEach((v) => qs.append(key, v))
+      else qs.append(key, String(val))
+    }
+
+    const qStr      = qs.toString()
+    const targetUrl = `https://api.tase.co.il/api/${segments.join('/')}${qStr ? `?${qStr}` : ''}`
+
+    /** @type {RequestInit} */
+    const opts = {
+      method:  req.method ?? 'GET',
+      headers: {
+        'Content-Type':  'application/json',
+        'Referer':        'https://www.tase.co.il/',
+        'Cache-Control':  'no-cache',
+        'User-Agent':     'Mozilla/5.0',
+      },
+    }
+
+    if ((req.method === 'POST' || req.method === 'PUT') && req.body) {
+      opts.body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body)
+    }
+
+    const upstream = await fetch(targetUrl, opts)
+
+    if (!upstream.ok) {
+      const text = await upstream.text().catch(() => '')
+      return res.status(upstream.status).json({ error: `TASE ${upstream.status}`, body: text })
+    }
+
+    const data = await upstream.json()
     res.setHeader('Access-Control-Allow-Origin', '*')
-    res.status(upstream.status).json(data)
+    res.setHeader('Cache-Control', 'no-store')
+    return res.status(200).json(data)
+
   } catch (err) {
-    res.status(502).json({ error: 'TASE proxy error', details: String(err) })
+    console.error('[tase-proxy] error:', err)
+    return res.status(502).json({ error: 'proxy_error', details: String(err) })
   }
 }
