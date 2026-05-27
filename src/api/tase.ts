@@ -81,7 +81,11 @@ async function fetchWithTimeout(
 /** Fetch all TASE bond securities (≈1,000 items). Single call, no auth. */
 export async function fetchBondEntities(): Promise<TaseEntity[]> {
   const res = await fetchWithTimeout('/api/tase/content/searchentities?lang=0', { headers: HDR })
-  if (!res.ok) throw new Error(`רשימת ניירות: שגיאת שרת ${res.status}`)
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({})) as Record<string, unknown>
+    const detail = errJson.body ? ` — ${String(errJson.body).slice(0, 80)}` : ''
+    throw new Error(`שגיאת שרת ${res.status}${detail}`)
+  }
   const raw: unknown = await res.json()
   // TASE may return a plain array or wrap results in an object
   const all: TaseEntity[] = Array.isArray(raw)
