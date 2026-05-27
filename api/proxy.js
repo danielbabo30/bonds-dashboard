@@ -1,25 +1,33 @@
 /**
- * Vercel Serverless Function — TASE API proxy
+ * Vercel Edge Function — TASE API proxy
+ * Runs on Cloudflare edge network (not AWS Lambda), different IP range
  * Called via rewrite: /api/tase/:path* → /api/proxy?p=:path*
  */
-export default async function handler(req, res) {
-  // Handle CORS preflight
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-  if (req.method === 'OPTIONS') return res.status(204).end()
+export const config = { runtime: 'edge' }
+
+export default async function handler(req) {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  }
+
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders })
+  }
 
   try {
-    const p   = Array.isArray(req.query.p) ? req.query.p.join('/') : (req.query.p ?? '')
-    const qs  = new URLSearchParams()
+    const url = new URL(req.url)
+    const pParam = url.searchParams.get('p') ?? ''
 
-    for (const [key, val] of Object.entries(req.query)) {
-      if (key === 'p') continue
-      Array.isArray(val) ? val.forEach((v) => qs.append(key, v)) : qs.append(key, String(val))
+    // Rebuild query string (everything except 'p')
+    const qs = new URLSearchParams()
+    for (const [key, val] of url.searchParams.entries()) {
+      if (key !== 'p') qs.append(key, val)
     }
 
-    const targetUrl = `https://api.tase.co.il/api/${p}${qs.toString() ? `?${qs}` : ''}`
-    const method = req.method ?? 'GET'
+    const targetUrl = `https://api.tase.co.il/api/${pParam}${qs.toString() ? `?${qs}` : ''}`
+    const method = req.method
 
     const headers = {
       'Origin':          'https://www.tase.co.il',
@@ -28,7 +36,6 @@ export default async function handler(req, res) {
       'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept':          'application/json, text/plain, */*',
       'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Accept-Encoding': 'gzip, deflate, br',
       'Cache-Control':   'no-cache',
       'Pragma':          'no-cache',
       'Sec-Fetch-Dest':  'empty',
@@ -36,31 +43,36 @@ export default async function handler(req, res) {
       'Sec-Fetch-Site':  'same-site',
     }
 
-    // Only add Content-Type for requests with a body
-    if (['POST', 'PUT'].includes(method)) {
+    if (method === 'POST' || method === 'PUT') {
       headers['Content-Type'] = 'application/json'
     }
 
-    const opts = { method, headers }
+    const fetchOpts = { method, headers }
 
-    if (['POST', 'PUT'].includes(method) && req.body) {
-      opts.body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body)
+    if ((method === 'POST' || method === 'PUT') && req.body) {
+      fetchOpts.body = await req.text()
     }
 
-    const upstream = await fetch(targetUrl, opts)
+    const upstream = await fetch(targetUrl, fetchOpts)
 
     if (!upstream.ok) {
       const text = await upstream.text().catch(() => '')
-      console.error(`[proxy] TASE ${upstream.status} for ${targetUrl}:`, text.slice(0, 200))
-      return res.status(upstream.status).json({ error: `TASE_${upstream.status}`, body: text.slice(0, 300) })
+      return new Response(
+        JSON.stringify({ error: `TASE_${upstream.status}`, body: text.slice(0, 300) }),
+        { status: upstream.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    const data = await upstream.json()
-    res.setHeader('Cache-Control', 'no-store')
-    return res.status(200).json(data)
+    const data = await upstream.text() // keep as raw text to avoid double-parse
+    return new Response(data, {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    })
 
   } catch (err) {
-    console.error('[proxy]', err)
-    return res.status(502).json({ error: 'proxy_error', details: String(err) })
+    return new Response(
+      JSON.stringify({ error: 'proxy_error', details: String(err) }),
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
 }
