@@ -120,12 +120,12 @@ function buildPageWindow(current: number, total: number): (number | '…')[] {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function DataFreshnessIndicator({ tradeDate, isMock }: { tradeDate?: string; isMock?: boolean }) {
+function DataFreshnessIndicator({ tradeDate, isMock, mockReason }: { tradeDate?: string; isMock?: boolean; mockReason?: string }) {
   if (isMock) {
     return (
-      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2 rounded-lg">
+      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2 rounded-lg max-w-xs" title={mockReason}>
         <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-        <span>נתוני דמה (בורסת ת"א לא זמינה) · הפעל <code>npm run dev</code> לנתונים אמיתיים</span>
+        <span>נתוני דמה · בורסת ת"א לא זמינה{mockReason ? ` (${mockReason})` : ''}</span>
       </div>
     )
   }
@@ -222,6 +222,7 @@ export default function ScreenerPage() {
   const [listError, setListError]         = useState<string | null>(null)
   const [loadedCount, setLoadedCount]     = useState(0)
   const [usingMockData, setUsingMockData] = useState(false)
+  const [mockReason, setMockReason]       = useState<string>('')
   const [syncing, setSyncing]             = useState(false)
   const [lastSyncedAt, setLastSyncedAt]   = useState<Date | null>(null)
 
@@ -261,7 +262,9 @@ export default function ScreenerPage() {
         setLastSyncedAt(new Date())
       })
       .catch((e: Error) => {
-        console.warn('TASE API unavailable, using mock data:', e.message)
+        const reason = e.name === 'AbortError' ? 'timeout (15s)' : e.message
+        console.warn('TASE API unavailable, using mock data:', reason)
+        setMockReason(reason)
         const mockEntities = mockBonds.map(mockToEntity)
         const mockCache: Record<string, TaseSecurityData> = {}
         mockBonds.forEach((b) => { mockCache[b.securityId] = mockToSecurityData(b) })
@@ -408,7 +411,7 @@ export default function ScreenerPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <DataFreshnessIndicator tradeDate={tradeDate} isMock={usingMockData} />
+            <DataFreshnessIndicator tradeDate={tradeDate} isMock={usingMockData} mockReason={mockReason} />
 
             {/* Manual sync button */}
             <button

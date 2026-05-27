@@ -82,7 +82,14 @@ async function fetchWithTimeout(
 export async function fetchBondEntities(): Promise<TaseEntity[]> {
   const res = await fetchWithTimeout('/api/tase/content/searchentities?lang=0', { headers: HDR })
   if (!res.ok) throw new Error(`רשימת ניירות: שגיאת שרת ${res.status}`)
-  const all: TaseEntity[] = await res.json()
+  const raw: unknown = await res.json()
+  // TASE may return a plain array or wrap results in an object
+  const all: TaseEntity[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as Record<string, unknown>)?.Data)
+      ? (raw as Record<string, unknown>).Data as TaseEntity[]
+      : []
+  if (all.length === 0) throw new Error('תגובה ריקה מהבורסה')
   return all.filter((e) => isBondSubType(e.SubTypeDesc))
 }
 
